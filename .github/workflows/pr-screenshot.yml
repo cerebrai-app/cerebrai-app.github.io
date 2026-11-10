@@ -50,36 +50,12 @@ jobs:
           path: screenshots/
           if-no-files-found: error
 
-  # A separate job, so the app token never shares a runner with the PR's code.
-  comment:
-    needs: screenshot
-    # PRs from forks cannot read the secrets, so they stop at the artifact above.
-    if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    env:
-      APP_CLIENT_ID: ${{ secrets.SCREENSHOT_APP_CLIENT_ID }}
-    steps:
-      - name: Warn when the app credentials are missing
-        if: ${{ env.APP_CLIENT_ID == '' }}
-        run: echo "::warning::Secret SCREENSHOT_APP_CLIENT_ID is not set, so no screenshot comment was posted. See the comment at the top of .github/workflows/pr-screenshot.yml."
-
       - name: Create app token
         id: app-token
-        if: ${{ env.APP_CLIENT_ID != '' }}
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ env.APP_CLIENT_ID }}
+          client-id: ${{ secrets.SCREENSHOT_APP_CLIENT_ID }}
           private-key: ${{ secrets.SCREENSHOT_APP_PRIVATE_KEY }}
-          # Only what the comment needs, even if the app is granted more.
-          permission-contents: write
-          permission-pull-requests: write
-
-      - name: Download screenshots
-        if: ${{ steps.app-token.outputs.token != '' }}
-        uses: actions/download-artifact@v8
-        with:
-          name: home-page-screenshots
-          path: screenshots
 
       - name: Comment on the PR
         if: ${{ steps.app-token.outputs.token != '' }}
@@ -88,37 +64,38 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          set -euo pipefail
+          gh auth status
+          # set -euo pipefail
 
-          # gh uploads the attached files and points these image references at them.
-          body="<!-- pr-screenshot -->
-          ### Home page preview
+          # # gh uploads the attached files and points these image references at them.
+          # body="<!-- pr-screenshot -->
+          # ### Home page preview
 
-          Built from $HEAD_SHA.
+          # Built from $HEAD_SHA.
 
-          **Desktop (1280×800)**
+          # **Desktop (1280×800)**
 
-          ![Home page on desktop](screenshots/desktop.png)
+          # ![Home page on desktop](screenshots/desktop.png)
 
-          **Mobile (390×844)**
+          # **Mobile (390×844)**
 
-          ![Home page on mobile](screenshots/mobile.png)"
+          # ![Home page on mobile](screenshots/mobile.png)"
 
-          url="$(gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$body" \
-            --attach screenshots/desktop.png --attach screenshots/mobile.png)"
-          echo "Posted $url"
+          # url="$(gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$body" \
+          #   --attach screenshots/desktop.png --attach screenshots/mobile.png)"
+          # echo "Posted $url"
 
-          new_id="${url##*issuecomment-}"
-          if [[ ! "$new_id" =~ ^[0-9]+$ ]]; then
-            echo "::error::Could not read the new comment's id, so earlier comments were left in place."
-            exit 1
-          fi
+          # new_id="${url##*issuecomment-}"
+          # if [[ ! "$new_id" =~ ^[0-9]+$ ]]; then
+          #   echo "::error::Could not read the new comment's id, so earlier comments were left in place."
+          #   exit 1
+          # fi
 
-          # Replace, rather than add to, the comments from earlier runs.
-          gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
-            --jq '.[] | select(.user.type == "Bot" and (.body | contains("<!-- pr-screenshot -->"))) | .id' |
-            while read -r id; do
-              if [[ "$id" != "$new_id" ]]; then
-                gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id"
-              fi
-            done
+          # # Replace, rather than add to, the comments from earlier runs.
+          # gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+          #   --jq '.[] | select(.user.type == "Bot" and (.body | contains("<!-- pr-screenshot -->"))) | .id' |
+          #   while read -r id; do
+          #     if [[ "$id" != "$new_id" ]]; then
+          #       gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id"
+          #     fi
+          #   done

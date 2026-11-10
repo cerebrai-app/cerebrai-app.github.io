@@ -1,11 +1,22 @@
 name: PR screenshot
 
+# Builds the pull request, captures the home page, and posts the screenshots in
+# a PR comment as attachments (`gh pr comment --attach`).
+#
+# GitHub does not accept the built-in GITHUB_TOKEN for attachment uploads, so the
+# comment is posted as a GitHub App. Needs two secrets (repository or
+# organization level):
+#   SCREENSHOT_APP_CLIENT_ID    the app's Client ID (on its settings page, "Iv...")
+#   SCREENSHOT_APP_PRIVATE_KEY  the app's private key (the whole .pem file)
+# The app must be installed on this repository with read/write on Contents and
+# Pull requests. Until the secrets exist the comment job only prints a warning;
+# the screenshots are still available as a workflow artifact.
+
 on:
   pull_request:
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: pr-screenshot-${{ github.event.pull_request.number }}
@@ -39,11 +50,41 @@ jobs:
           path: screenshots/
           if-no-files-found: error
 
-      # PRs from forks get a read-only token, so they stop at the artifact above.
+  # A separate job, so the app token never shares a runner with the PR's code.
+  comment:
+    needs: screenshot
+    # PRs from forks cannot read the secrets, so they stop at the artifact above.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      APP_CLIENT_ID: ${{ secrets.SCREENSHOT_APP_CLIENT_ID }}
+    steps:
+      - name: Warn when the app credentials are missing
+        if: ${{ env.APP_CLIENT_ID == '' }}
+        run: echo "::warning::Secret SCREENSHOT_APP_CLIENT_ID is not set, so no screenshot comment was posted. See the comment at the top of .github/workflows/pr-screenshot.yml."
+
+      - name: Create app token
+        id: app-token
+        if: ${{ env.APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ env.APP_CLIENT_ID }}
+          private-key: ${{ secrets.SCREENSHOT_APP_PRIVATE_KEY }}
+          # Only what the comment needs, even if the app is granted more.
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Download screenshots
+        if: ${{ steps.app-token.outputs.token != '' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: home-page-screenshots
+          path: screenshots
+
       - name: Comment on the PR
-        if: github.event.pull_request.head.repo.full_name == github.repository
+        if: ${{ steps.app-token.outputs.token != '' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |

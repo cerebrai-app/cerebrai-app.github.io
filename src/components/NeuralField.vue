@@ -39,12 +39,15 @@ function resize(): void {
   const el = canvas.value;
   if (!el) return;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const widthChanged = el.clientWidth !== width;
   width = el.clientWidth;
   height = el.clientHeight;
   el.width = Math.round(width * dpr);
   el.height = Math.round(height * dpr);
   el.getContext('2d')?.setTransform(dpr, 0, 0, dpr, 0, 0);
-  seed();
+  // Phones show and hide the address bar while scrolling, which only changes the
+  // height. Keep the graph in that case instead of reshuffling it mid-scroll.
+  if (widthChanged || nodes.length === 0) seed();
   draw();
 }
 
@@ -54,8 +57,12 @@ function draw(): void {
   ctx.clearRect(0, 0, width, height);
 
   ctx.lineWidth = 1;
-  nodes.forEach((a, i) => {
-    for (const b of nodes.slice(i + 1)) {
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i];
+    if (!a) continue;
+    for (let j = i + 1; j < nodes.length; j++) {
+      const b = nodes[j];
+      if (!b) continue;
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
       if (dist >= LINK_DISTANCE) continue;
       ctx.strokeStyle = `rgb(139 124 255 / ${0.22 * (1 - dist / LINK_DISTANCE)})`;
@@ -64,7 +71,7 @@ function draw(): void {
       ctx.lineTo(b.x, b.y);
       ctx.stroke();
     }
-  });
+  }
 
   ctx.fillStyle = 'rgb(160 220 235 / 0.7)';
   for (const n of nodes) {
@@ -78,8 +85,12 @@ function tick(): void {
   for (const n of nodes) {
     n.x += n.vx;
     n.y += n.vy;
-    if (n.x < 0 || n.x > width) n.vx *= -1;
-    if (n.y < 0 || n.y > height) n.vy *= -1;
+    // Point the velocity inward rather than flipping it, so a node left outside by a
+    // shrinking canvas heads back in instead of jittering on the edge.
+    if (n.x < 0) n.vx = Math.abs(n.vx);
+    else if (n.x > width) n.vx = -Math.abs(n.vx);
+    if (n.y < 0) n.vy = Math.abs(n.vy);
+    else if (n.y > height) n.vy = -Math.abs(n.vy);
   }
   draw();
   frame = requestAnimationFrame(tick);

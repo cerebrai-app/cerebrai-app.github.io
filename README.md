@@ -44,5 +44,6 @@ scripts/          # Tooling (home page screenshots)
   desktop and mobile sizes, and posts them in a new PR comment on every push, replacing the previous
   one. The images are committed to the `main` branch of
   [cerebrai-app/automated-screenshots](https://github.com/cerebrai-app/automated-screenshots) using
-  a GitHub App: set the `SCREENSHOT_APP_CLIENT_ID` and `SCREENSHOT_APP_PRIVATE_KEY` secrets and
-  install the app on that repository, as described at the top of the workflow file.
+  a GitHub App, which also posts the comment: set the `SCREENSHOT_APP_CLIENT_ID` and
+  `SCREENSHOT_APP_PRIVATE_KEY` secrets and install the app on both repositories, as described at the
+  top of the workflow file.

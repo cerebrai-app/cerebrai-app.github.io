@@ -4,12 +4,14 @@ name: PR screenshot
 # main branch of cerebrai-app/automated-screenshots, and links them in a PR comment.
 #
 # Pushing to another repository needs more than the built-in GITHUB_TOKEN, so the
-# push uses a GitHub App token. Needs two secrets (repository or organization level):
+# push and the comment both use GitHub App tokens, each scoped to one repository.
+# Needs two secrets (repository or organization level):
 #   SCREENSHOT_APP_CLIENT_ID    the app's Client ID (on its settings page, "Iv...")
 #   SCREENSHOT_APP_PRIVATE_KEY  the app's private key (the whole .pem file)
 # The app must be installed on cerebrai-app/automated-screenshots with read/write on
-# Contents. Until the secrets exist the publish job only prints a warning; the
-# screenshots are still available as a workflow artifact.
+# Contents, and on this repository with read/write on Pull requests. Until the
+# secrets exist the publish job only prints a warning; the screenshots are still
+# available as a workflow artifact.
 
 on:
   pull_request:
@@ -57,9 +59,6 @@ jobs:
     # PRs from forks cannot read the secrets, so they stop at the artifact above.
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
     env:
       APP_CLIENT_ID: ${{ secrets.SCREENSHOT_APP_CLIENT_ID }}
     steps:
@@ -67,7 +66,7 @@ jobs:
         if: ${{ env.APP_CLIENT_ID == '' }}
         run: echo "::warning::Secret SCREENSHOT_APP_CLIENT_ID is not set, so no screenshot comment was posted. See the comment at the top of .github/workflows/pr-screenshot.yml."
 
-      - name: Create app token
+      - name: Create app token for the screenshots repository
         id: app-token
         if: ${{ env.APP_CLIENT_ID != '' }}
         uses: actions/create-github-app-token@v3
@@ -78,6 +77,18 @@ jobs:
           # Only the screenshots repository, even if the app is installed more widely.
           repositories: automated-screenshots
           permission-contents: write
+
+      - name: Create app token for pull request comments
+        id: comment-token
+        if: ${{ env.APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ env.APP_CLIENT_ID }}
+          private-key: ${{ secrets.SCREENSHOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          # Only this repository, and only to comment.
+          repositories: ${{ github.event.repository.name }}
+          permission-pull-requests: write
 
       - name: Download screenshots
         if: ${{ steps.app-token.outputs.token != '' }}
@@ -96,15 +107,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          # One folder per source repository and pull request; the commit in the
-          # file name gives every run its own image URL.
+          # One folder per source repository and pull request, with a fixed file name
+          # per image so later pushes overwrite them instead of piling up new files.
           dir="${GITHUB_REPOSITORY#*/}/pr-${PR_NUMBER}"
-          prefix="${HEAD_SHA::7}"
 
           # Commits one file to main through the contents API.
           put_file() {
             local name="$1" path existing body
-            path="$dir/$prefix-$name.png"
+            path="$dir/$name.png"
 
             # Re-running a job rewrites a file that already exists, which needs its current sha.
             existing="$(gh api "repos/${SCREENSHOTS_REPO}/contents/${path}?ref=main" --jq .sha 2> /dev/null || true)"
@@ -134,21 +144,22 @@ jobs:
           put_file mobile
 
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
-          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
 
       - name: Comment on the PR
         if: ${{ steps.commit.outcome == 'success' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.comment-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           SHOTS_DIR: ${{ steps.commit.outputs.dir }}
-          SHOTS_PREFIX: ${{ steps.commit.outputs.prefix }}
         run: |
           set -euo pipefail
 
           # Linked by branch, not commit: the screenshots repo's history is rewritten regularly.
-          base="https://github.com/${SCREENSHOTS_REPO}/blob/main/${SHOTS_DIR}/${SHOTS_PREFIX}"
+          # The image names stay the same between pushes, so the head commit in the query
+          # string gives each comment its own URL and keeps GitHub from serving a cached image.
+          base="https://github.com/${SCREENSHOTS_REPO}/blob/main/${SHOTS_DIR}"
+          query="?raw=true&v=${HEAD_SHA}"
           body="<!-- pr-screenshot -->
           ### Home page preview
 
@@ -156,7 +167,7 @@ jobs:
 
           | Desktop (1280×800) | Mobile (390×844) |
           | :---: | :---: |
-          | <img src=\"${base}-desktop.png?raw=true\" alt=\"Home page on desktop\" width=\"640\"> | <img src=\"${base}-mobile.png?raw=true\" alt=\"Home page on mobile\" width=\"220\"> |"
+          | <img src=\"${base}/desktop.png${query}\" alt=\"Home page on desktop\" width=\"640\"> | <img src=\"${base}/mobile.png${query}\" alt=\"Home page on mobile\" width=\"220\"> |"
 
           url="$(gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$body")"
           echo "Posted $url"
@@ -172,6 +183,8 @@ jobs:
             --jq '.[] | select(.user.type == "Bot" and (.body | contains("<!-- pr-screenshot -->"))) | .id' |
             while read -r id; do
               if [[ "$id" != "$new_id" ]]; then
-                gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id"
+                # The new comment is already posted, so a failed delete only leaves a stale one.
+                gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id" ||
+                  echo "::warning::Could not delete the earlier screenshot comment $id."
               fi
             done

@@ -62,12 +62,12 @@ jobs:
           set -euo pipefail
 
           # 1. Directly hit GitHub's upload endpoint to bypass the CLI token check
-          echo "asset endpoint: ${{ github.api_url }}/repos/${{ github.repository }}/environments/assets"
 
           MIME=image/png
           FILE=./screenshots/desktop.png
           REPOSITORY_ID=$(gh api "repos/${{ github.repository }}" --jq .id)
 
+          echo "Asset endpoint: https://uploads.github.com/user-attachments/assets?name=${FILE}&content_type=${MIME}&repository_id=${REPOSITORY_ID}"
           UPLOAD_RESP=$(curl -s "https://uploads.github.com/user-attachments/assets?name=${FILE}&content_type=${MIME}&repository_id=${REPOSITORY_ID}" \
             -X POST -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/json" --data-binary "@$FILE")

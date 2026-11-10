@@ -1,0 +1,115 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import NeuralField from '../components/NeuralField.vue';
+import Wordmark from '../components/Wordmark.astro';
+
+const year = new Date().getFullYear();
+---
+
+<BaseLayout
+  title="Cerebr.AI — Coming soon"
+  description="Cerebr.AI is a second brain powered by agentic AI. Coming soon."
+>
+  <div class="backdrop">
+    <NeuralField client:idle />
+  </div>
+
+  <main>
+    <p class="status">
+      <span class="dot"></span>Coming soon
+    </p>
+    <Wordmark as="h1" />
+    <p class="tagline">Your second brain, with a mind of its own.</p>
+    <p class="blurb">
+      Agentic AI that captures what you know, connects the dots, and gets to work on your behalf.
+    </p>
+  </main>
+
+  <footer>&copy; {year} Cerebr.AI</footer>
+</BaseLayout>
+
+<style>
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(60rem 36rem at 50% 45%, rgb(139 124 255 / 0.16), transparent 70%),
+      radial-gradient(40rem 28rem at 70% 70%, rgb(55 214 197 / 0.08), transparent 70%);
+    /* Fade the graph out toward the edges so the copy stays the focus. */
+    mask-image: radial-gradient(ellipse at center, #000 35%, transparent 85%);
+  }
+
+  main {
+    /* Fills the space above the footer, which follows in normal flow so it can never
+       overlap the copy on a short screen. */
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    padding: 4rem 1.5rem;
+    text-align: center;
+  }
+
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0.4rem 0.95rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.04);
+    backdrop-filter: blur(6px);
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--accent-b);
+    box-shadow: 0 0 0.75rem var(--accent-b);
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+
+  .tagline {
+    margin: 0;
+    font-size: clamp(1.2rem, 3.2vw, 1.75rem);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  .blurb {
+    max-width: 34rem;
+    margin: 0;
+    color: var(--muted);
+    font-size: clamp(1rem, 2.2vw, 1.125rem);
+    text-wrap: balance;
+  }
+
+  footer {
+    padding: 1.5rem;
+    color: var(--muted);
+    font-size: 0.8rem;
+    text-align: center;
+  }
+
+  @keyframes pulse {
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dot {
+      animation: none;
+    }
+  }
+</style>

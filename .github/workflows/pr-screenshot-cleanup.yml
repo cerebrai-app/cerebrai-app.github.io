@@ -1,0 +1,89 @@
+name: PR screenshot cleanup
+
+# Removes a pull request's screenshots from the current files of
+# cerebrai-app/automated-screenshots when the pull request is closed or merged. This does
+# not erase them from that repository's git history: they stay readable there until the
+# history is squashed, and the squash only drops them because they are no longer in the
+# current files. Uses the same GitHub App and secrets as pr-screenshot.yml, with Contents
+# read/write on the screenshots repository.
+#
+# It shares a concurrency group with the publish job in pr-screenshot.yml, and GitHub keeps
+# only one waiting run per group. If a pull request is closed while a screenshot job is
+# running and another run for it is queued after that, this run can be dropped. Then re-run
+# it by hand from the Actions tab (open the cancelled run and choose "Re-run all jobs").
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+
+env:
+  SCREENSHOTS_REPO: cerebrai-app/automated-screenshots
+
+jobs:
+  cleanup:
+    # PRs from forks never publish screenshots (see pr-screenshot.yml), so there is nothing to delete.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Shares a group with the publish job, so a run still publishing waits for this one
+    # (or the other way round) instead of recreating the files after they are deleted.
+    concurrency:
+      group: pr-screenshot-publish-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    env:
+      APP_CLIENT_ID: ${{ secrets.SCREENSHOT_APP_CLIENT_ID }}
+    steps:
+      - name: Warn when the app credentials are missing
+        if: ${{ env.APP_CLIENT_ID == '' }}
+        run: echo "::warning::Secret SCREENSHOT_APP_CLIENT_ID is not set, so no screenshots were deleted."
+
+      - name: Create app token for the screenshots repository
+        id: app-token
+        if: ${{ env.APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ env.APP_CLIENT_ID }}
+          private-key: ${{ secrets.SCREENSHOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: automated-screenshots
+          permission-contents: write
+
+      - name: Check out the helper script
+        # The action is pinned and no credentials are left behind. The script itself comes from
+        # the pull request's own commit, which adds no risk today: a branch in this repository
+        # can already change this workflow file. Revisit this (use the base commit instead)
+        # if outside contributors ever get to push branches here.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: scripts
+          persist-credentials: false
+
+      - name: Delete the screenshots
+        if: ${{ steps.app-token.outputs.token != '' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          dir="${GITHUB_REPOSITORY#*/}/pr-${PR_NUMBER}"
+
+          if ! listing="$(gh api "repos/${SCREENSHOTS_REPO}/contents/${dir}?ref=main" --jq '.[] | select(.type == "file") | .path' 2>&1)"; then
+            if grep -q "HTTP 404" <<< "$listing"; then
+              echo "No screenshots for PR #${PR_NUMBER}; nothing to delete."
+              exit 0
+            fi
+            echo "$listing" >&2
+            exit 1
+          fi
+
+          while read -r path; do
+            [[ -n "$path" ]] || continue
+            echo "Deleting $path"
+            scripts/screenshot-store.sh delete "$path" \
+              "Delete screenshots for ${GITHUB_REPOSITORY} PR #${PR_NUMBER}"
+          done <<< "$listing"

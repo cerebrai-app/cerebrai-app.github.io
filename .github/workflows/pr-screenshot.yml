@@ -1,0 +1,191 @@
+name: PR screenshot
+
+# Builds the pull request, captures the home page, commits the screenshots to the
+# main branch of cerebrai-app/automated-screenshots, and links them in a PR comment.
+#
+# Pushing to another repository needs more than the built-in GITHUB_TOKEN, so the
+# push and the comment both use GitHub App tokens, each scoped to one repository.
+# Needs two secrets (repository or organization level):
+#   SCREENSHOT_APP_CLIENT_ID    the app's Client ID (on its settings page, "Iv...")
+#   SCREENSHOT_APP_PRIVATE_KEY  the app's private key (the whole .pem file)
+# The app must be installed on cerebrai-app/automated-screenshots with read/write on
+# Contents, and on this repository with read/write on Pull requests. Until the
+# secrets exist the publish job only prints a warning; the screenshots are still
+# available as a workflow artifact.
+#
+# The screenshots repository is public, and so is its git history: do not open a pull
+# request here that shows anything unreleased or private. Treat every screenshot as
+# permanently public. Every push adds commits to that repository, so its history grows;
+# it owns its own housekeeping and is squashed regularly, which is safe because the
+# comments link to its main branch, not to commits. A squash keeps whatever is in the
+# current files, so pr-screenshot-cleanup.yml removes a closed pull request's images
+# from them, which lets the next squash drop those images from history.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  SCREENSHOTS_REPO: cerebrai-app/automated-screenshots
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # A newer push makes this run's screenshots out of date, so stop building them.
+    concurrency:
+      group: pr-screenshot-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The PR's code runs below; don't leave the token where it can read it.
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Build site
+        run: pnpm run build
+      - name: Capture home page
+        run: pnpm run screenshot
+      - name: Upload screenshots as an artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: home-page-screenshots
+          path: screenshots/
+          if-no-files-found: error
+
+  # A separate job, so the app token never shares a runner with the PR's code.
+  publish:
+    needs: screenshot
+    # PRs from forks cannot read the secrets, so they stop at the artifact above.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Never cancelled mid-way: the two images are separate commits, and stopping between
+    # them would leave a desktop image and a mobile image from different pushes. A newer
+    # run waits for this one to finish and then overwrites both.
+    concurrency:
+      group: pr-screenshot-publish-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    env:
+      APP_CLIENT_ID: ${{ secrets.SCREENSHOT_APP_CLIENT_ID }}
+    steps:
+      - name: Warn when the app credentials are missing
+        if: ${{ env.APP_CLIENT_ID == '' }}
+        run: echo "::warning::Secret SCREENSHOT_APP_CLIENT_ID is not set, so no screenshot comment was posted. See the comment at the top of .github/workflows/pr-screenshot.yml."
+
+      - name: Create app token for the screenshots repository
+        id: app-token
+        if: ${{ env.APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ env.APP_CLIENT_ID }}
+          private-key: ${{ secrets.SCREENSHOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          # Only the screenshots repository, even if the app is installed more widely.
+          repositories: automated-screenshots
+          permission-contents: write
+
+      - name: Create app token for pull request comments
+        id: comment-token
+        if: ${{ env.APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ env.APP_CLIENT_ID }}
+          private-key: ${{ secrets.SCREENSHOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          # Only this repository, and only to comment.
+          repositories: ${{ github.event.repository.name }}
+          permission-pull-requests: write
+
+      - name: Check out the helper script
+        # The action is pinned and no credentials are left behind. The script itself comes from
+        # the pull request's own commit, which adds no risk today: a branch in this repository
+        # can already change this workflow file. Revisit this (use the base commit instead)
+        # if outside contributors ever get to push branches here.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: scripts
+          persist-credentials: false
+
+      - name: Download screenshots
+        if: ${{ steps.app-token.outputs.token != '' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: home-page-screenshots
+          path: screenshots
+
+      - name: Commit screenshots to ${{ env.SCREENSHOTS_REPO }}
+        id: commit
+        if: ${{ steps.app-token.outputs.token != '' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # One folder per source repository and pull request, with a fixed file name per
+          # image so later pushes overwrite them instead of piling up new files.
+          dir="${GITHUB_REPOSITORY#*/}/pr-${PR_NUMBER}"
+
+          for name in desktop mobile; do
+            scripts/screenshot-store.sh put "$dir/$name.png" "screenshots/$name.png" \
+              "Screenshot for ${GITHUB_REPOSITORY} PR #${PR_NUMBER} at ${HEAD_SHA} (${name})"
+          done
+
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on the PR
+        if: ${{ steps.commit.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ steps.comment-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SHOTS_DIR: ${{ steps.commit.outputs.dir }}
+          APP_LOGIN: ${{ steps.comment-token.outputs.app-slug }}[bot]
+        run: |
+          set -euo pipefail
+
+          # Linked by branch, not commit: the screenshots repo's history is rewritten regularly.
+          # The image names stay the same between pushes, so the head commit in the query
+          # string gives each comment its own URL and keeps GitHub from serving a cached image.
+          base="https://github.com/${SCREENSHOTS_REPO}/blob/main/${SHOTS_DIR}"
+          query="?raw=true&v=${HEAD_SHA}"
+          body="<!-- pr-screenshot -->
+          ### Home page preview
+
+          Preview of this pull request merged into main (head commit \`${HEAD_SHA::7}\`).
+
+          | Desktop (1280×800) | Mobile (390×844) |
+          | :---: | :---: |
+          | <img src=\"${base}/desktop.png${query}\" alt=\"Home page on desktop\" width=\"640\"> | <img src=\"${base}/mobile.png${query}\" alt=\"Home page on mobile\" width=\"220\"> |"
+
+          url="$(gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$body")"
+          echo "Posted $url"
+
+          new_id="${url##*issuecomment-}"
+          if [[ ! "$new_id" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not read the new comment's id, so earlier comments were left in place."
+            exit 1
+          fi
+
+          # Replace, rather than add to, this app's comments from earlier runs.
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            --jq '.[] | select(.user.login == $ENV.APP_LOGIN and (.body | contains("<!-- pr-screenshot -->"))) | .id' |
+            while read -r id; do
+              if [[ "$id" != "$new_id" ]]; then
+                # The new comment is already posted, so a failed delete only leaves a stale one.
+                gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id" ||
+                  echo "::warning::Could not delete the earlier screenshot comment $id."
+              fi
+            done

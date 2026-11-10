@@ -60,13 +60,14 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          
+
           # 1. Directly hit GitHub's upload endpoint to bypass the CLI token check
           UPLOAD_RESP=$(curl -s -X POST "${{ github.api_url }}/repos/${{ github.repository }}/environments/assets" \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "Content-Type: application/octet-stream" \
             --data-binary @./screenshots/desktop.png)
+          echo "Upload response for desktop: $UPLOAD_RESP"
           DESKTOP_URL=$(echo "$UPLOAD_RESP" | jq -r '.url')
 
           UPLOAD_RESP=$(curl -s -X POST "${{ github.api_url }}/repos/${{ github.repository }}/environments/assets" \
@@ -74,6 +75,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Content-Type: application/octet-stream" \
             --data-binary @./screenshots/mobile.png)
+          echo "Upload response for mobile: $UPLOAD_RESP"
           MOBILE_URL=$(echo "$UPLOAD_RESP" | jq -r '.url')
 
           # gh uploads the attached files and points these image references at them.

@@ -101,9 +101,9 @@ jobs:
           dir="${GITHUB_REPOSITORY#*/}/pr-${PR_NUMBER}"
           prefix="${HEAD_SHA::7}"
 
-          # Commits one file to main through the contents API and prints the new commit's sha.
+          # Commits one file to main through the contents API.
           put_file() {
-            local name="$1" path existing body response
+            local name="$1" path existing body
             path="$dir/$prefix-$name.png"
 
             # Re-running a job rewrites a file that already exists, which needs its current sha.
@@ -121,8 +121,7 @@ jobs:
 
             # Other pull requests commit to the same branch, so retry if main moved underneath us.
             for attempt in 1 2 3 4 5; do
-              if response="$(gh api --method PUT "repos/${SCREENSHOTS_REPO}/contents/${path}" --input "$body")"; then
-                jq -r .commit.sha <<< "$response"
+              if gh api --method PUT "repos/${SCREENSHOTS_REPO}/contents/${path}" --input "$body" > /dev/null; then
                 return 0
               fi
               echo "Commit of $name failed (attempt $attempt), retrying..." >&2
@@ -131,11 +130,9 @@ jobs:
             return 1
           }
 
-          put_file desktop > /dev/null
-          # Both files exist at the second commit, so the links use that one.
-          sha="$(put_file mobile)"
+          put_file desktop
+          put_file mobile
 
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
           echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
 
@@ -145,14 +142,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          SHOTS_SHA: ${{ steps.commit.outputs.sha }}
           SHOTS_DIR: ${{ steps.commit.outputs.dir }}
           SHOTS_PREFIX: ${{ steps.commit.outputs.prefix }}
         run: |
           set -euo pipefail
 
-          # Pinned to the commit, so the images never change under the comment.
-          base="https://github.com/${SCREENSHOTS_REPO}/blob/${SHOTS_SHA}/${SHOTS_DIR}/${SHOTS_PREFIX}"
+          # Linked by branch, not commit: the screenshots repo's history is rewritten regularly.
+          base="https://github.com/${SCREENSHOTS_REPO}/blob/main/${SHOTS_DIR}/${SHOTS_PREFIX}"
           body="<!-- pr-screenshot -->
           ### Home page preview
 

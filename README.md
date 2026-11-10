@@ -41,5 +41,5 @@ scripts/          # Tooling (home page screenshots)
   the repository's **Settings → Pages**, the **Source** must be set to **GitHub Actions**.
 - **CI** (`ci.yml`) runs the type-check, ESLint, and Prettier on pull requests and on `main`.
 - **PR screenshot** (`pr-screenshot.yml`) builds each pull request, captures the home page at
-  desktop and mobile sizes, and posts them in a PR comment that is updated on every push. The
+  desktop and mobile sizes, and posts them in a new PR comment on every push, replacing the previous one. The
   images are stored on the `pr-screenshots` branch.

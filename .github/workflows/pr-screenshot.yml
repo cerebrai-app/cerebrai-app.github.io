@@ -29,6 +29,7 @@ env:
 jobs:
   screenshot:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -59,6 +60,7 @@ jobs:
     # PRs from forks cannot read the secrets, so they stop at the artifact above.
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       APP_CLIENT_ID: ${{ secrets.SCREENSHOT_APP_CLIENT_ID }}
     steps:

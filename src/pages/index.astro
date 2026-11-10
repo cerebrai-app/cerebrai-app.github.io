@@ -41,13 +41,15 @@ const year = new Date().getFullYear();
   }
 
   main {
-    min-height: 100svh;
+    /* Fills the space above the footer, which follows in normal flow so it can never
+       overlap the copy on a short screen. */
+    flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 1.5rem;
-    padding: 4rem 1.5rem 6rem;
+    padding: 4rem 1.5rem;
     text-align: center;
   }
 
@@ -93,8 +95,6 @@ const year = new Date().getFullYear();
   }
 
   footer {
-    position: absolute;
-    inset: auto 0 0;
     padding: 1.5rem;
     color: var(--muted);
     font-size: 0.8rem;

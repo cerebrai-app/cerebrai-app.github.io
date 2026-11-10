@@ -46,8 +46,10 @@ scripts/          # Tooling (home page screenshots)
   [cerebrai-app/automated-screenshots](https://github.com/cerebrai-app/automated-screenshots) using
   a GitHub App, which also posts the comment: set the `SCREENSHOT_APP_CLIENT_ID` and
   `SCREENSHOT_APP_PRIVATE_KEY` secrets and install the app on both repositories, as described at the
-  top of the workflow file. That repository is public, so **screenshots are public: do not open a
-  pull request that shows anything unreleased or private.** Its history is squashed regularly to
-  keep it small, so nothing here depends on old commits.
-- **PR screenshot cleanup** (`pr-screenshot-cleanup.yml`) deletes a pull request's screenshots from
-  that repository when the pull request is closed or merged.
+  top of the workflow file. That repository, including its git history, is public, so **treat every
+  screenshot as permanently public: do not open a pull request that shows anything unreleased or
+  private.** Its history is squashed regularly to keep it small, so nothing here depends on old
+  commits.
+- **PR screenshot cleanup** (`pr-screenshot-cleanup.yml`) removes a pull request's screenshots from
+  that repository's current files when the pull request is closed or merged. They stay in its git
+  history until the next squash, which can then drop them.

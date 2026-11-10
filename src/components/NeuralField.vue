@@ -17,6 +17,7 @@ const LINK_DISTANCE = 150;
 const canvas = ref<HTMLCanvasElement | null>(null);
 
 let frame = 0;
+let lastTime = 0;
 let nodes: Node[] = [];
 let width = 0;
 let height = 0;
@@ -81,10 +82,16 @@ function draw(): void {
   }
 }
 
-function tick(): void {
+// Velocities are in pixels per 60 Hz frame, so the drift looks the same on 120 Hz screens.
+const FRAME_MS = 1000 / 60;
+
+function tick(now: number): void {
+  // Cap the step so a background tab that wakes up does not make the dots jump.
+  const step = lastTime ? Math.min(now - lastTime, 50) / FRAME_MS : 1;
+  lastTime = now;
   for (const n of nodes) {
-    n.x += n.vx;
-    n.y += n.vy;
+    n.x += n.vx * step;
+    n.y += n.vy * step;
     // Point the velocity inward rather than flipping it, so a node left outside by a
     // shrinking canvas heads back in instead of jittering on the edge.
     if (n.x < 0) n.vx = Math.abs(n.vx);
@@ -98,6 +105,7 @@ function tick(): void {
 
 function syncMotion(): void {
   cancelAnimationFrame(frame);
+  lastTime = 0;
   // With reduced motion the graph stays as a still image.
   if (!motionQuery?.matches) frame = requestAnimationFrame(tick);
 }

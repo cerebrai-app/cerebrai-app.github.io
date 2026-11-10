@@ -1,8 +1,10 @@
 name: PR screenshot cleanup
 
-# Deletes a pull request's screenshots from cerebrai-app/automated-screenshots when the
-# pull request is closed or merged, so they do not stay public after the review is over.
-# Uses the same GitHub App and secrets as pr-screenshot.yml, with Contents read/write on
+# Removes a pull request's screenshots from the current files of
+# cerebrai-app/automated-screenshots when the pull request is closed or merged. This does
+# not erase them from that repository's git history: they stay readable there until the
+# history is squashed, and the squash only drops them because they are no longer in the
+# current files. Uses the same GitHub App and secrets as pr-screenshot.yml, with Contents read/write on
 # the screenshots repository. It runs no code from the pull request and checks nothing out.
 
 on:

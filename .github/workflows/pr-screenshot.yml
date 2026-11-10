@@ -136,8 +136,17 @@ jobs:
             # Other pull requests commit to the same branch, so retry if main moved underneath us.
             for attempt in 1 2 3 4 5; do
               # Overwriting a file that already exists needs its current sha. It is read on
-              # every attempt, because a failed attempt may be down to a stale one.
-              existing="$(gh api "repos/${SCREENSHOTS_REPO}/contents/${path}?ref=main" --jq .sha 2> /dev/null || true)"
+              # every attempt, because a failed attempt may be down to a stale one. Only a 404
+              # means the file is new; any other error is retried rather than treated as new.
+              if ! existing="$(gh api "repos/${SCREENSHOTS_REPO}/contents/${path}?ref=main" --jq .sha 2>&1)"; then
+                if grep -q "HTTP 404" <<< "$existing"; then
+                  existing=""
+                else
+                  echo "Could not read $name (attempt $attempt): $existing" >&2
+                  sleep $((attempt * 2))
+                  continue
+                fi
+              fi
 
               # The image goes in a file: it is too large for a command-line argument.
               jq -n \
@@ -169,6 +178,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           SHOTS_DIR: ${{ steps.commit.outputs.dir }}
+          APP_LOGIN: ${{ steps.comment-token.outputs.app-slug }}[bot]
         run: |
           set -euo pipefail
 
@@ -195,9 +205,9 @@ jobs:
             exit 1
           fi
 
-          # Replace, rather than add to, the comments from earlier runs.
+          # Replace, rather than add to, this app's comments from earlier runs.
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
-            --jq '.[] | select(.user.type == "Bot" and (.body | contains("<!-- pr-screenshot -->"))) | .id' |
+            --jq '.[] | select(.user.login == $ENV.APP_LOGIN and (.body | contains("<!-- pr-screenshot -->"))) | .id' |
             while read -r id; do
               if [[ "$id" != "$new_id" ]]; then
                 # The new comment is already posted, so a failed delete only leaves a stale one.

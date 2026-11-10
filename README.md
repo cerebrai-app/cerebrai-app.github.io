@@ -52,4 +52,5 @@ scripts/          # Tooling (home page screenshots)
   commits.
 - **PR screenshot cleanup** (`pr-screenshot-cleanup.yml`) removes a pull request's screenshots from
   that repository's current files when the pull request is closed or merged. They stay in its git
-  history until the next squash, which can then drop them.
+  history until the next squash, which can then drop them. If a pull request is closed while a
+  screenshot job is running, this run can be dropped; re-run it by hand from the Actions tab.

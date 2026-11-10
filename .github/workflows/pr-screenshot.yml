@@ -4,8 +4,7 @@ on:
   pull_request:
 
 permissions:
-  # gh only uploads comment attachments with push access to the repository.
-  contents: write
+  contents: read
   pull-requests: write
 
 concurrency:

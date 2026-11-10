@@ -90,11 +90,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          if ! gh pr comment --help | grep -q -- '--attach'; then
-            echo "::error::The runner's $(gh --version | head -n 1) does not support 'gh pr comment --attach'."
-            exit 1
-          fi
-
           # gh uploads the attached files and points these image references at them.
           body="<!-- pr-screenshot -->
           ### Home page preview

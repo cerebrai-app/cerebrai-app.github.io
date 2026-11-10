@@ -42,8 +42,4 @@ scripts/          # Tooling (home page screenshots)
 - **CI** (`ci.yml`) runs the type-check, ESLint, and Prettier on pull requests and on `main`.
 - **PR screenshot** (`pr-screenshot.yml`) builds each pull request, captures the home page at
   desktop and mobile sizes, and posts them in a new PR comment on every push, replacing the previous
-  one. The images are stored on the `pr-screenshots` branch.
-- **Clean up merged PR screenshots** (`pr-screenshot-cleanup.yml`) deletes a pull request's
-  screenshots from that branch when it is merged.
-- **Prune old PR screenshots** (`pr-screenshot-prune.yml`) runs weekly and deletes screenshots
-  captured more than 30 days ago, which covers pull requests closed without merging.
+  one. The images are uploaded as comment attachments with `gh pr comment --attach`.

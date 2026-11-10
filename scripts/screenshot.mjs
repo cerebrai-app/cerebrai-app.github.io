@@ -6,8 +6,9 @@ import { preview } from 'astro';
 import { chromium } from 'playwright';
 
 const VIEWPORTS = [
-  { name: 'desktop', width: 1280, height: 800 },
-  { name: 'mobile', width: 390, height: 844 },
+  { name: 'desktop', width: 1280, height: 800, scale: 2 },
+  // Kept at 1x so the tall capture stays a readable size in a PR comment.
+  { name: 'mobile', width: 390, height: 844, scale: 1 },
 ];
 
 const outDir = path.resolve(process.argv[2] ?? 'screenshots');
@@ -21,10 +22,10 @@ const browser = await chromium.launch({
 
 try {
   const url = `http://localhost:${server.port}/`;
-  for (const { name, width, height } of VIEWPORTS) {
+  for (const { name, width, height, scale } of VIEWPORTS) {
     const context = await browser.newContext({
       viewport: { width, height },
-      deviceScaleFactor: 2,
+      deviceScaleFactor: scale,
       // Freezes the animated background so captures are stable.
       reducedMotion: 'reduce',
     });

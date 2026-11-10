@@ -3,18 +3,13 @@ name: PR screenshot
 on:
   pull_request:
 
-# Screenshots are stored on a dedicated branch so the PR comment can embed them.
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
 
 concurrency:
   group: pr-screenshot-${{ github.event.pull_request.number }}
   cancel-in-progress: true
-
-env:
-  SCREENSHOT_BRANCH: pr-screenshots
-  PR_DIR: pr-${{ github.event.pull_request.number }}
 
 jobs:
   screenshot:
@@ -45,89 +40,49 @@ jobs:
           if-no-files-found: error
 
       # PRs from forks get a read-only token, so they stop at the artifact above.
-      - name: Publish screenshots to the ${{ env.SCREENSHOT_BRANCH }} branch
-        id: publish
+      - name: Comment on the PR
         if: github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          store="$RUNNER_TEMP/screenshot-store"
 
-          for attempt in 1 2 3; do
-            rm -rf "$store"
-            if git ls-remote --exit-code --heads "$remote" "$SCREENSHOT_BRANCH" > /dev/null; then
-              git clone --quiet --depth 1 --branch "$SCREENSHOT_BRANCH" "$remote" "$store"
-            else
-              git init --quiet --initial-branch "$SCREENSHOT_BRANCH" "$store"
-              git -C "$store" remote add origin "$remote"
-            fi
+          if ! gh pr comment --help | grep -q -- '--attach'; then
+            echo "::error::The runner's $(gh --version | head -n 1) does not support 'gh pr comment --attach'."
+            exit 1
+          fi
 
-            rm -rf "${store:?}/$PR_DIR"
-            mkdir -p "$store/$PR_DIR"
-            # The commit in the file name gives every run a fresh image URL.
-            for file in screenshots/*.png; do
-              cp "$file" "$store/$PR_DIR/${HEAD_SHA::7}-$(basename "$file")"
+          # gh uploads the attached files and points these image references at them.
+          body="<!-- pr-screenshot -->
+          ### Home page preview
+
+          Built from $HEAD_SHA.
+
+          **Desktop (1280×800)**
+
+          ![Home page on desktop](screenshots/desktop.png)
+
+          **Mobile (390×844)**
+
+          ![Home page on mobile](screenshots/mobile.png)"
+
+          url="$(gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$body" \
+            --attach screenshots/desktop.png --attach screenshots/mobile.png)"
+          echo "Posted $url"
+
+          new_id="${url##*issuecomment-}"
+          if [[ ! "$new_id" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not read the new comment's id, so earlier comments were left in place."
+            exit 1
+          fi
+
+          # Replace, rather than add to, the comments from earlier runs.
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            --jq '.[] | select(.user.type == "Bot" and (.body | contains("<!-- pr-screenshot -->"))) | .id' |
+            while read -r id; do
+              if [[ "$id" != "$new_id" ]]; then
+                gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id"
+              fi
             done
-            # Read by scripts/prune-screenshot-store.sh to find old screenshots.
-            date +%s > "$store/$PR_DIR/.captured-at"
-
-            git -C "$store" add --all
-            git -C "$store" \
-              -c user.name="github-actions[bot]" \
-              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit --quiet -m "Screenshots for PR #${{ github.event.pull_request.number }} at $HEAD_SHA"
-
-            if git -C "$store" push --quiet origin "$SCREENSHOT_BRANCH"; then
-              exit 0
-            fi
-            echo "Push failed (attempt $attempt), retrying..."
-            sleep $((attempt * 3))
-          done
-          exit 1
-
-      - name: Comment on the PR
-        if: steps.publish.outcome == 'success'
-        uses: actions/github-script@v9
-        env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        with:
-          script: |
-            const marker = '<!-- pr-screenshot -->';
-            const { owner, repo } = context.repo;
-            const { HEAD_SHA, PR_DIR, SCREENSHOT_BRANCH } = process.env;
-            // Linked by branch, not commit: the cleanup workflows rewrite the branch's history.
-            const image = (name) =>
-              `https://github.com/${owner}/${repo}/blob/${SCREENSHOT_BRANCH}/${PR_DIR}/${HEAD_SHA.slice(0, 7)}-${name}.png?raw=true`;
-
-            const body = [
-              marker,
-              '### Home page preview',
-              '',
-              `Built from ${HEAD_SHA}.`,
-              '',
-              '| Desktop (1280×800) | Mobile (390×844) |',
-              '| :---: | :---: |',
-              `| <img src="${image('desktop')}" alt="Home page on desktop" width="640"> | <img src="${image('mobile')}" alt="Home page on mobile" width="220"> |`,
-            ].join('\n');
-
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number: context.issue.number,
-              per_page: 100,
-            });
-            const stale = comments.filter((c) => c.user?.type === 'Bot' && c.body?.includes(marker));
-
-            // Post first, so a failure never leaves the PR without a screenshot.
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: context.issue.number,
-              body,
-            });
-            for (const comment of stale) {
-              await github.rest.issues.deleteComment({ owner, repo, comment_id: comment.id });
-            }

@@ -106,6 +106,14 @@ jobs:
           repositories: ${{ github.event.repository.name }}
           permission-pull-requests: write
 
+      - name: Check out the helper script
+        # Pinned, and without credentials: this job holds the app key.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: scripts
+          persist-credentials: false
+
       - name: Download screenshots
         if: ${{ steps.app-token.outputs.token != '' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -123,51 +131,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          # One folder per source repository and pull request, with a fixed file name
-          # per image so later pushes overwrite them instead of piling up new files.
+          # One folder per source repository and pull request, with a fixed file name per
+          # image so later pushes overwrite them instead of piling up new files.
           dir="${GITHUB_REPOSITORY#*/}/pr-${PR_NUMBER}"
 
-          # Commits one file to main through the contents API.
-          put_file() {
-            local name="$1" path existing body
-            path="$dir/$name.png"
-            body="$RUNNER_TEMP/$name.json"
-
-            # Other pull requests commit to the same branch, so retry if main moved underneath us.
-            for attempt in 1 2 3 4 5; do
-              # Overwriting a file that already exists needs its current sha. It is read on
-              # every attempt, because a failed attempt may be down to a stale one. Only a 404
-              # means the file is new; any other error is retried rather than treated as new.
-              if ! existing="$(gh api "repos/${SCREENSHOTS_REPO}/contents/${path}?ref=main" --jq .sha 2>&1)"; then
-                if grep -q "HTTP 404" <<< "$existing"; then
-                  existing=""
-                else
-                  echo "Could not read $name (attempt $attempt): $existing" >&2
-                  sleep $((attempt * 2))
-                  continue
-                fi
-              fi
-
-              # The image goes in a file: it is too large for a command-line argument.
-              jq -n \
-                --arg message "Screenshot for ${GITHUB_REPOSITORY} PR #${PR_NUMBER} at ${HEAD_SHA} (${name})" \
-                --arg branch main \
-                --arg sha "$existing" \
-                --rawfile content <(base64 --wrap=0 "screenshots/$name.png") \
-                '{message: $message, branch: $branch, content: $content} + (if $sha == "" then {} else {sha: $sha} end)' \
-                > "$body"
-
-              if gh api --method PUT "repos/${SCREENSHOTS_REPO}/contents/${path}" --input "$body" > /dev/null; then
-                return 0
-              fi
-              echo "Commit of $name failed (attempt $attempt), retrying..." >&2
-              sleep $((attempt * 2))
-            done
-            return 1
-          }
-
-          put_file desktop
-          put_file mobile
+          for name in desktop mobile; do
+            scripts/screenshot-store.sh put "$dir/$name.png" "screenshots/$name.png" \
+              "Screenshot for ${GITHUB_REPOSITORY} PR #${PR_NUMBER} at ${HEAD_SHA} (${name})"
+          done
 
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
 

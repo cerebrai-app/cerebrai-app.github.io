@@ -5,8 +5,7 @@ name: PR screenshot cleanup
 # not erase them from that repository's git history: they stay readable there until the
 # history is squashed, and the squash only drops them because they are no longer in the
 # current files. Uses the same GitHub App and secrets as pr-screenshot.yml, with Contents
-# read/write on the screenshots repository. It runs no code from the pull request and checks
-# nothing out.
+# read/write on the screenshots repository.
 #
 # It shares a concurrency group with the publish job in pr-screenshot.yml, and GitHub keeps
 # only one waiting run per group. If a pull request is closed while a screenshot job is
@@ -52,6 +51,14 @@ jobs:
           repositories: automated-screenshots
           permission-contents: write
 
+      - name: Check out the helper script
+        # Pinned, and without credentials: this job holds the app key.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: scripts
+          persist-credentials: false
+
       - name: Delete the screenshots
         if: ${{ steps.app-token.outputs.token != '' }}
         env:
@@ -61,34 +68,6 @@ jobs:
           set -euo pipefail
 
           dir="${GITHUB_REPOSITORY#*/}/pr-${PR_NUMBER}"
-
-          # Deletes one file from main through the contents API.
-          delete_file() {
-            local path="$1" sha
-            # Other pull requests commit to the same branch, so retry if main moved underneath us.
-            for attempt in 1 2 3 4 5; do
-              # A delete needs the file's current sha, which is read again on every attempt.
-              # Only a 404 means the file is already gone; any other error is retried, so a
-              # rate limit or network error can never be mistaken for a deleted file.
-              if sha="$(gh api "repos/${SCREENSHOTS_REPO}/contents/${path}?ref=main" --jq .sha 2>&1)"; then
-                :
-              elif grep -q "HTTP 404" <<< "$sha"; then
-                return 0
-              else
-                echo "Could not read $path (attempt $attempt): $sha" >&2
-                sleep $((attempt * 2))
-                continue
-              fi
-              if gh api --method DELETE "repos/${SCREENSHOTS_REPO}/contents/${path}" \
-                -f message="Delete screenshots for ${GITHUB_REPOSITORY} PR #${PR_NUMBER}" \
-                -f branch=main -f sha="$sha" > /dev/null; then
-                return 0
-              fi
-              echo "Delete of $path failed (attempt $attempt), retrying..." >&2
-              sleep $((attempt * 2))
-            done
-            return 1
-          }
 
           if ! listing="$(gh api "repos/${SCREENSHOTS_REPO}/contents/${dir}?ref=main" --jq '.[] | select(.type == "file") | .path' 2>&1)"; then
             if grep -q "HTTP 404" <<< "$listing"; then
@@ -102,5 +81,6 @@ jobs:
           while read -r path; do
             [[ -n "$path" ]] || continue
             echo "Deleting $path"
-            delete_file "$path"
+            scripts/screenshot-store.sh delete "$path" \
+              "Delete screenshots for ${GITHUB_REPOSITORY} PR #${PR_NUMBER}"
           done <<< "$listing"

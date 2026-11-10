@@ -14,7 +14,7 @@ Requires Node.js 22.23.4 or newer and [pnpm](https://pnpm.io) (the version is pi
 | :---------------- | :--------------------------------------------------- |
 | `pnpm install`    | Install dependencies                                 |
 | `pnpm dev`        | Start the dev server at `localhost:4321`             |
-| `pnpm build`      | Type-check and build the site to `./dist/`           |
+| `pnpm build`      | Build the site to `./dist/`                          |
 | `pnpm preview`    | Preview the production build locally                 |
 | `pnpm check`      | Type-check Astro, Vue, and TypeScript files          |
 | `pnpm lint`       | Lint with ESLint (`pnpm lint:fix` to auto-fix)       |
@@ -40,17 +40,10 @@ scripts/          # Tooling (home page screenshots)
   following the [Astro GitHub Pages guide](https://docs.astro.build/en/guides/deploy/github/). In
   the repository's **Settings → Pages**, the **Source** must be set to **GitHub Actions**.
 - **CI** (`ci.yml`) runs the type-check, ESLint, and Prettier on pull requests and on `main`.
-- **PR screenshot** (`pr-screenshot.yml`) builds each pull request, captures the home page at
-  desktop and mobile sizes, and posts them in a new PR comment on every push, replacing the previous
-  one. The images are committed to the `main` branch of
-  [cerebrai-app/automated-screenshots](https://github.com/cerebrai-app/automated-screenshots) using
-  a GitHub App, which also posts the comment: set the `SCREENSHOT_APP_CLIENT_ID` and
-  `SCREENSHOT_APP_PRIVATE_KEY` secrets and install the app on both repositories, as described at the
-  top of the workflow file. That repository, including its git history, is public, so **treat every
-  screenshot as permanently public: do not open a pull request that shows anything unreleased or
-  private.** Its history is squashed regularly to keep it small, so nothing here depends on old
-  commits.
-- **PR screenshot cleanup** (`pr-screenshot-cleanup.yml`) removes a pull request's screenshots from
-  that repository's current files when the pull request is closed or merged. They stay in its git
-  history until the next squash, which can then drop them. If a pull request is closed while a
-  screenshot job is running, this run can be dropped; re-run it by hand from the Actions tab.
+- **PR screenshot** (`pr-screenshot.yml`) posts a desktop and a mobile screenshot of the home page
+  as a comment on every pull request, replacing the previous one. The setup (a GitHub App and two
+  secrets) is described at the top of the workflow file. The images are stored in a public
+  repository, so do not open a pull request that shows anything unreleased or private.
+- **PR screenshot cleanup** (`pr-screenshot-cleanup.yml`) removes a closed pull request's
+  screenshots from that repository. See the top of the workflow file for what that does and does
+  not do.

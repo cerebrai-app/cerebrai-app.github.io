@@ -13,6 +13,11 @@ permissions:
   pages: write
   id-token: write
 
+# Two quick pushes would otherwise start two deploys, and the older one could finish last.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest

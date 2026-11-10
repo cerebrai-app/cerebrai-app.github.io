@@ -62,6 +62,8 @@ jobs:
           set -euo pipefail
 
           # 1. Directly hit GitHub's upload endpoint to bypass the CLI token check
+          echo "asset endpoint: ${{ github.api_url }}/repos/${{ github.repository }}/environments/assets"
+          
           UPLOAD_RESP=$(curl -s -X POST "${{ github.api_url }}/repos/${{ github.repository }}/environments/assets" \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \

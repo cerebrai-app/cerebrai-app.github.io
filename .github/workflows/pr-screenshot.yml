@@ -13,9 +13,11 @@ name: PR screenshot
 # secrets exist the publish job only prints a warning; the screenshots are still
 # available as a workflow artifact.
 #
-# Every push adds commits to the screenshots repository, so its history grows. That
-# repository owns its own housekeeping: its history is squashed regularly, which is
-# safe because the comments link to its main branch rather than to commits.
+# The screenshots repository is public, so a screenshot is public too: do not open a pull
+# request here that shows anything unreleased or private. A pull request's images are
+# deleted when it is closed (pr-screenshot-cleanup.yml). Every push still adds commits
+# to that repository, so its history grows; it owns its own housekeeping and is squashed
+# regularly, which is safe because the comments link to its main branch, not to commits.
 
 on:
   pull_request:
@@ -176,7 +178,7 @@ jobs:
           body="<!-- pr-screenshot -->
           ### Home page preview
 
-          Built from ${HEAD_SHA}.
+          Preview of this pull request merged into main (head commit \`${HEAD_SHA::7}\`).
 
           | Desktop (1280×800) | Mobile (390×844) |
           | :---: | :---: |

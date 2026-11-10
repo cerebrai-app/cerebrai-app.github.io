@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: pr-screenshot-${{ github.event.pull_request.number }}
@@ -56,11 +57,12 @@ jobs:
         with:
           client-id: ${{ secrets.SCREENSHOT_APP_CLIENT_ID }}
           private-key: ${{ secrets.SCREENSHOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
 
       - name: Comment on the PR
         if: ${{ steps.app-token.outputs.token != '' }}
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |

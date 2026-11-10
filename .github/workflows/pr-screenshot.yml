@@ -50,6 +50,7 @@ jobs:
         if: github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
@@ -66,16 +67,20 @@ jobs:
 
             rm -rf "${store:?}/$PR_DIR"
             mkdir -p "$store/$PR_DIR"
-            cp screenshots/*.png "$store/$PR_DIR/"
+            # The commit in the file name gives every run a fresh image URL.
+            for file in screenshots/*.png; do
+              cp "$file" "$store/$PR_DIR/${HEAD_SHA::7}-$(basename "$file")"
+            done
+            # Read by scripts/prune-screenshot-store.sh to find old screenshots.
+            date +%s > "$store/$PR_DIR/.captured-at"
 
             git -C "$store" add --all
             git -C "$store" \
               -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit --quiet -m "Screenshots for PR #${{ github.event.pull_request.number }} at ${{ github.event.pull_request.head.sha }}"
+              commit --quiet -m "Screenshots for PR #${{ github.event.pull_request.number }} at $HEAD_SHA"
 
             if git -C "$store" push --quiet origin "$SCREENSHOT_BRANCH"; then
-              echo "sha=$(git -C "$store" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "Push failed (attempt $attempt), retrying..."
@@ -87,16 +92,15 @@ jobs:
         if: steps.publish.outcome == 'success'
         uses: actions/github-script@v9
         env:
-          STORE_SHA: ${{ steps.publish.outputs.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         with:
           script: |
             const marker = '<!-- pr-screenshot -->';
             const { owner, repo } = context.repo;
-            const { STORE_SHA, HEAD_SHA, PR_DIR } = process.env;
-            // Pinned to the commit so each update shows a fresh, uncached image.
+            const { HEAD_SHA, PR_DIR, SCREENSHOT_BRANCH } = process.env;
+            // Linked by branch, not commit: the cleanup workflows rewrite the branch's history.
             const image = (name) =>
-              `https://github.com/${owner}/${repo}/blob/${STORE_SHA}/${PR_DIR}/${name}.png?raw=true`;
+              `https://github.com/${owner}/${repo}/blob/${SCREENSHOT_BRANCH}/${PR_DIR}/${HEAD_SHA.slice(0, 7)}-${name}.png?raw=true`;
 
             const body = [
               marker,

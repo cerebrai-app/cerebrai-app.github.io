@@ -1,0 +1,30 @@
+name: Clean up merged PR screenshots
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+env:
+  SCREENSHOT_BRANCH: pr-screenshots
+
+jobs:
+  cleanup:
+    # Fork PRs never publish screenshots (see pr-screenshot.yml).
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Run the script from the default branch, not the PR's version of it.
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Delete the merged PR's screenshots
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: scripts/prune-screenshot-store.sh --pr "$PR_NUMBER"

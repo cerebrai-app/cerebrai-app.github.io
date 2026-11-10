@@ -1,27 +1,28 @@
 name: PR screenshot
 
-# Builds the pull request, captures the home page, and posts the screenshots in
-# a PR comment as attachments (`gh pr comment --attach`).
+# Builds the pull request, captures the home page, commits the screenshots to the
+# main branch of cerebrai-app/automated-screenshots, and links them in a PR comment.
 #
-# GitHub does not accept the built-in GITHUB_TOKEN for attachment uploads, so the
-# comment is posted as a GitHub App. Needs two secrets (repository or
-# organization level):
+# Pushing to another repository needs more than the built-in GITHUB_TOKEN, so the
+# push uses a GitHub App token. Needs two secrets (repository or organization level):
 #   SCREENSHOT_APP_CLIENT_ID    the app's Client ID (on its settings page, "Iv...")
 #   SCREENSHOT_APP_PRIVATE_KEY  the app's private key (the whole .pem file)
-# The app must be installed on this repository with read/write on Contents and
-# Pull requests. Until the secrets exist the comment job only prints a warning;
-# the screenshots are still available as a workflow artifact.
+# The app must be installed on cerebrai-app/automated-screenshots with read/write on
+# Contents. Until the secrets exist the publish job only prints a warning; the
+# screenshots are still available as a workflow artifact.
 
 on:
   pull_request:
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: pr-screenshot-${{ github.event.pull_request.number }}
   cancel-in-progress: true
+
+env:
+  SCREENSHOTS_REPO: cerebrai-app/automated-screenshots
 
 jobs:
   screenshot:
@@ -43,63 +44,112 @@ jobs:
         run: pnpm run build
       - name: Capture home page
         run: pnpm run screenshot
+      - name: Upload screenshots as an artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: home-page-screenshots
+          path: screenshots/
+          if-no-files-found: error
+
+  # A separate job, so the app token never shares a runner with the PR's code.
+  publish:
+    needs: screenshot
+    # PRs from forks cannot read the secrets, so they stop at the artifact above.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      APP_CLIENT_ID: ${{ secrets.SCREENSHOT_APP_CLIENT_ID }}
+    steps:
+      - name: Warn when the app credentials are missing
+        if: ${{ env.APP_CLIENT_ID == '' }}
+        run: echo "::warning::Secret SCREENSHOT_APP_CLIENT_ID is not set, so no screenshot comment was posted. See the comment at the top of .github/workflows/pr-screenshot.yml."
 
       - name: Create app token
         id: app-token
+        if: ${{ env.APP_CLIENT_ID != '' }}
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ secrets.SCREENSHOT_APP_CLIENT_ID }}
+          client-id: ${{ env.APP_CLIENT_ID }}
           private-key: ${{ secrets.SCREENSHOT_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
+          # Only the screenshots repository, even if the app is installed more widely.
+          repositories: automated-screenshots
+          permission-contents: write
 
-      - name: Comment on the PR
+      - name: Download screenshots
+        if: ${{ steps.app-token.outputs.token != '' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: home-page-screenshots
+          path: screenshots
+
+      - name: Commit screenshots to ${{ env.SCREENSHOTS_REPO }}
+        id: commit
         if: ${{ steps.app-token.outputs.token != '' }}
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SHOTS_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
 
-          # 1. Directly hit GitHub's upload endpoint to bypass the CLI token check
+          remote="https://x-access-token:${SHOTS_TOKEN}@github.com/${SCREENSHOTS_REPO}.git"
+          store="$RUNNER_TEMP/screenshots-repo"
+          # One folder per source repository and pull request; the commit in the
+          # file name gives every run its own image URL.
+          dir="${GITHUB_REPOSITORY#*/}/pr-${PR_NUMBER}"
+          prefix="${HEAD_SHA::7}"
 
-          UPLOAD_RESPONSE=$(curl -s -X POST \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/json" \
-            -H "Content-Type: image/png" \
-            --data-binary @"./screenshots/desktop.png" \
-            "https://github.com")
-          echo "Upload response for desktop: $UPLOAD_RESPONSE"
+          git clone --quiet --depth 1 --branch main "$remote" "$store"
+          mkdir -p "$store/$dir"
+          cp screenshots/desktop.png "$store/$dir/$prefix-desktop.png"
+          cp screenshots/mobile.png "$store/$dir/$prefix-mobile.png"
+          git -C "$store" add --all
+          git -C "$store" \
+            -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "Screenshots for ${GITHUB_REPOSITORY} PR #${PR_NUMBER} at ${HEAD_SHA}"
 
-          # UPLOAD_RESP=$(curl -s -X POST "${{ github.api_url }}/repos/${{ github.repository }}/environments/assets" \
-          #   -H "Authorization: Bearer $GH_TOKEN" \
-          #   -H "Accept: application/vnd.github+json" \
-          #   -H "Content-Type: application/octet-stream" \
-          #   --data-binary @./screenshots/desktop.png)
-          # echo "Upload response for desktop: $UPLOAD_RESP"
-          # DESKTOP_URL=$(echo "$UPLOAD_RESP" | jq -r '.url')
+          # Other pull requests push to the same branch, so retry on a race.
+          for attempt in 1 2 3 4 5; do
+            if git -C "$store" push --quiet origin HEAD:main; then
+              echo "sha=$(git -C "$store" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              echo "dir=$dir" >> "$GITHUB_OUTPUT"
+              echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Push failed (attempt $attempt), rebasing and retrying..."
+            sleep $((attempt * 2))
+            git -C "$store" pull --quiet --rebase origin main
+          done
+          echo "::error::Could not push the screenshots to ${SCREENSHOTS_REPO}."
+          exit 1
 
-          # UPLOAD_RESP=$(curl -s -X POST "${{ github.api_url }}/repos/${{ github.repository }}/environments/assets" \
-          #   -H "Authorization: Bearer $GH_TOKEN" \
-          #   -H "Accept: application/vnd.github+json" \
-          #   -H "Content-Type: application/octet-stream" \
-          #   --data-binary @./screenshots/mobile.png)
-          # echo "Upload response for mobile: $UPLOAD_RESP"
-          # MOBILE_URL=$(echo "$UPLOAD_RESP" | jq -r '.url')
+      - name: Comment on the PR
+        if: ${{ steps.commit.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SHOTS_SHA: ${{ steps.commit.outputs.sha }}
+          SHOTS_DIR: ${{ steps.commit.outputs.dir }}
+          SHOTS_PREFIX: ${{ steps.commit.outputs.prefix }}
+        run: |
+          set -euo pipefail
 
-          # gh uploads the attached files and points these image references at them.
+          # Pinned to the commit, so the images never change under the comment.
+          base="https://github.com/${SCREENSHOTS_REPO}/blob/${SHOTS_SHA}/${SHOTS_DIR}/${SHOTS_PREFIX}"
           body="<!-- pr-screenshot -->
           ### Home page preview
 
-          Built from $HEAD_SHA.
+          Built from ${HEAD_SHA}.
 
-          **Desktop (1280×800)**
-
-          ![Home page on desktop]($DESKTOP_URL)
-
-          **Mobile (390×844)**
-
-          ![Home page on mobile]($MOBILE_URL)"
+          | Desktop (1280×800) | Mobile (390×844) |
+          | :---: | :---: |
+          | <img src=\"${base}-desktop.png?raw=true\" alt=\"Home page on desktop\" width=\"640\"> | <img src=\"${base}-mobile.png?raw=true\" alt=\"Home page on mobile\" width=\"220\"> |"
 
           url="$(gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$body")"
           echo "Posted $url"

@@ -12,16 +12,16 @@ name: PR screenshot
 # Contents, and on this repository with read/write on Pull requests. Until the
 # secrets exist the publish job only prints a warning; the screenshots are still
 # available as a workflow artifact.
+#
+# Every push adds commits to the screenshots repository, so its history grows. That
+# repository owns its own housekeeping: its history is squashed regularly, which is
+# safe because the comments link to its main branch rather than to commits.
 
 on:
   pull_request:
 
 permissions:
   contents: read
-
-concurrency:
-  group: pr-screenshot-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 env:
   SCREENSHOTS_REPO: cerebrai-app/automated-screenshots
@@ -30,6 +30,10 @@ jobs:
   screenshot:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # A newer push makes this run's screenshots out of date, so stop building them.
+    concurrency:
+      group: pr-screenshot-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
         with:
@@ -61,6 +65,12 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Never cancelled mid-way: the two images are separate commits, and stopping between
+    # them would leave a desktop image and a mobile image from different pushes. A newer
+    # run waits for this one to finish and then overwrites both.
+    concurrency:
+      group: pr-screenshot-publish-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     env:
       APP_CLIENT_ID: ${{ secrets.SCREENSHOT_APP_CLIENT_ID }}
     steps:
@@ -71,7 +81,7 @@ jobs:
       - name: Create app token for the screenshots repository
         id: app-token
         if: ${{ env.APP_CLIENT_ID != '' }}
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ env.APP_CLIENT_ID }}
           private-key: ${{ secrets.SCREENSHOT_APP_PRIVATE_KEY }}
@@ -83,7 +93,7 @@ jobs:
       - name: Create app token for pull request comments
         id: comment-token
         if: ${{ env.APP_CLIENT_ID != '' }}
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ env.APP_CLIENT_ID }}
           private-key: ${{ secrets.SCREENSHOT_APP_PRIVATE_KEY }}
@@ -94,7 +104,7 @@ jobs:
 
       - name: Download screenshots
         if: ${{ steps.app-token.outputs.token != '' }}
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: home-page-screenshots
           path: screenshots
@@ -117,22 +127,23 @@ jobs:
           put_file() {
             local name="$1" path existing body
             path="$dir/$name.png"
-
-            # Re-running a job rewrites a file that already exists, which needs its current sha.
-            existing="$(gh api "repos/${SCREENSHOTS_REPO}/contents/${path}?ref=main" --jq .sha 2> /dev/null || true)"
-
-            # The image goes in a file: it is too large for a command-line argument.
             body="$RUNNER_TEMP/$name.json"
-            jq -n \
-              --arg message "Screenshot for ${GITHUB_REPOSITORY} PR #${PR_NUMBER} at ${HEAD_SHA} (${name})" \
-              --arg branch main \
-              --arg sha "$existing" \
-              --rawfile content <(base64 --wrap=0 "screenshots/$name.png") \
-              '{message: $message, branch: $branch, content: $content} + (if $sha == "" then {} else {sha: $sha} end)' \
-              > "$body"
 
             # Other pull requests commit to the same branch, so retry if main moved underneath us.
             for attempt in 1 2 3 4 5; do
+              # Overwriting a file that already exists needs its current sha. It is read on
+              # every attempt, because a failed attempt may be down to a stale one.
+              existing="$(gh api "repos/${SCREENSHOTS_REPO}/contents/${path}?ref=main" --jq .sha 2> /dev/null || true)"
+
+              # The image goes in a file: it is too large for a command-line argument.
+              jq -n \
+                --arg message "Screenshot for ${GITHUB_REPOSITORY} PR #${PR_NUMBER} at ${HEAD_SHA} (${name})" \
+                --arg branch main \
+                --arg sha "$existing" \
+                --rawfile content <(base64 --wrap=0 "screenshots/$name.png") \
+                '{message: $message, branch: $branch, content: $content} + (if $sha == "" then {} else {sha: $sha} end)' \
+                > "$body"
+
               if gh api --method PUT "repos/${SCREENSHOTS_REPO}/contents/${path}" --input "$body" > /dev/null; then
                 return 0
               fi

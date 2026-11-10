@@ -7,7 +7,7 @@ Built with [Astro](https://astro.build), TypeScript, and Vue. Deployed to GitHub
 
 ## Development
 
-Requires Node.js 22.23 or newer and [pnpm](https://pnpm.io) (the version is pinned in
+Requires Node.js 22.23.4 or newer and [pnpm](https://pnpm.io) (the version is pinned in
 `package.json`; `corepack enable` will pick it up).
 
 | Command           | Action                                               |
@@ -46,4 +46,5 @@ scripts/          # Tooling (home page screenshots)
   [cerebrai-app/automated-screenshots](https://github.com/cerebrai-app/automated-screenshots) using
   a GitHub App, which also posts the comment: set the `SCREENSHOT_APP_CLIENT_ID` and
   `SCREENSHOT_APP_PRIVATE_KEY` secrets and install the app on both repositories, as described at the
-  top of the workflow file.
+  top of the workflow file. That repository's history is squashed regularly to keep it small, so
+  nothing here depends on old commits.

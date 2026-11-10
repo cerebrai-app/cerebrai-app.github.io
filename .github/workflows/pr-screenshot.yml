@@ -90,43 +90,54 @@ jobs:
         id: commit
         if: ${{ steps.app-token.outputs.token != '' }}
         env:
-          SHOTS_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
 
-          remote="https://x-access-token:${SHOTS_TOKEN}@github.com/${SCREENSHOTS_REPO}.git"
-          store="$RUNNER_TEMP/screenshots-repo"
           # One folder per source repository and pull request; the commit in the
           # file name gives every run its own image URL.
           dir="${GITHUB_REPOSITORY#*/}/pr-${PR_NUMBER}"
           prefix="${HEAD_SHA::7}"
 
-          git clone --quiet --depth 1 --branch main "$remote" "$store"
-          mkdir -p "$store/$dir"
-          cp screenshots/desktop.png "$store/$dir/$prefix-desktop.png"
-          cp screenshots/mobile.png "$store/$dir/$prefix-mobile.png"
-          git -C "$store" add --all
-          git -C "$store" \
-            -c user.name="github-actions[bot]" \
-            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit --quiet -m "Screenshots for ${GITHUB_REPOSITORY} PR #${PR_NUMBER} at ${HEAD_SHA}"
+          # Commits one file to main through the contents API and prints the new commit's sha.
+          put_file() {
+            local name="$1" path existing body response
+            path="$dir/$prefix-$name.png"
 
-          # Other pull requests push to the same branch, so retry on a race.
-          for attempt in 1 2 3 4 5; do
-            if git -C "$store" push --quiet origin HEAD:main; then
-              echo "sha=$(git -C "$store" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-              echo "dir=$dir" >> "$GITHUB_OUTPUT"
-              echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            echo "Push failed (attempt $attempt), rebasing and retrying..."
-            sleep $((attempt * 2))
-            git -C "$store" pull --quiet --rebase origin main
-          done
-          echo "::error::Could not push the screenshots to ${SCREENSHOTS_REPO}."
-          exit 1
+            # Re-running a job rewrites a file that already exists, which needs its current sha.
+            existing="$(gh api "repos/${SCREENSHOTS_REPO}/contents/${path}?ref=main" --jq .sha 2> /dev/null || true)"
+
+            # The image goes in a file: it is too large for a command-line argument.
+            body="$RUNNER_TEMP/$name.json"
+            jq -n \
+              --arg message "Screenshot for ${GITHUB_REPOSITORY} PR #${PR_NUMBER} at ${HEAD_SHA} (${name})" \
+              --arg branch main \
+              --arg sha "$existing" \
+              --rawfile content <(base64 --wrap=0 "screenshots/$name.png") \
+              '{message: $message, branch: $branch, content: $content} + (if $sha == "" then {} else {sha: $sha} end)' \
+              > "$body"
+
+            # Other pull requests commit to the same branch, so retry if main moved underneath us.
+            for attempt in 1 2 3 4 5; do
+              if response="$(gh api --method PUT "repos/${SCREENSHOTS_REPO}/contents/${path}" --input "$body")"; then
+                jq -r .commit.sha <<< "$response"
+                return 0
+              fi
+              echo "Commit of $name failed (attempt $attempt), retrying..." >&2
+              sleep $((attempt * 2))
+            done
+            return 1
+          }
+
+          put_file desktop > /dev/null
+          # Both files exist at the second commit, so the links use that one.
+          sha="$(put_file mobile)"
+
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
 
       - name: Comment on the PR
         if: ${{ steps.commit.outcome == 'success' }}

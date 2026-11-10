@@ -1,0 +1,131 @@
+name: PR screenshot
+
+on:
+  pull_request:
+
+# Screenshots are stored on a dedicated branch so the PR comment can embed them.
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pr-screenshot-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  SCREENSHOT_BRANCH: pr-screenshots
+  PR_DIR: pr-${{ github.event.pull_request.number }}
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The PR's code runs below; don't leave the token where it can read it.
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Build site
+        run: pnpm run build
+      - name: Capture home page
+        run: pnpm run screenshot
+
+      - name: Upload screenshots as an artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: home-page-screenshots
+          path: screenshots/
+          if-no-files-found: error
+
+      # PRs from forks get a read-only token, so they stop at the artifact above.
+      - name: Publish screenshots to the ${{ env.SCREENSHOT_BRANCH }} branch
+        id: publish
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          store="$RUNNER_TEMP/screenshot-store"
+
+          for attempt in 1 2 3; do
+            rm -rf "$store"
+            if git ls-remote --exit-code --heads "$remote" "$SCREENSHOT_BRANCH" > /dev/null; then
+              git clone --quiet --depth 1 --branch "$SCREENSHOT_BRANCH" "$remote" "$store"
+            else
+              git init --quiet --initial-branch "$SCREENSHOT_BRANCH" "$store"
+              git -C "$store" remote add origin "$remote"
+            fi
+
+            rm -rf "${store:?}/$PR_DIR"
+            mkdir -p "$store/$PR_DIR"
+            cp screenshots/*.png "$store/$PR_DIR/"
+
+            git -C "$store" add --all
+            git -C "$store" \
+              -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit --quiet -m "Screenshots for PR #${{ github.event.pull_request.number }} at ${{ github.event.pull_request.head.sha }}"
+
+            if git -C "$store" push --quiet origin "$SCREENSHOT_BRANCH"; then
+              echo "sha=$(git -C "$store" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Push failed (attempt $attempt), retrying..."
+            sleep $((attempt * 3))
+          done
+          exit 1
+
+      - name: Comment on the PR
+        if: steps.publish.outcome == 'success'
+        uses: actions/github-script@v9
+        env:
+          STORE_SHA: ${{ steps.publish.outputs.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        with:
+          script: |
+            const marker = '<!-- pr-screenshot -->';
+            const { owner, repo } = context.repo;
+            const { STORE_SHA, HEAD_SHA, PR_DIR } = process.env;
+            // Pinned to the commit so each update shows a fresh, uncached image.
+            const image = (name) =>
+              `https://github.com/${owner}/${repo}/blob/${STORE_SHA}/${PR_DIR}/${name}.png?raw=true`;
+
+            const body = [
+              marker,
+              '### Home page preview',
+              '',
+              `Built from ${HEAD_SHA}.`,
+              '',
+              '| Desktop (1280×800) | Mobile (390×844) |',
+              '| :---: | :---: |',
+              `| <img src="${image('desktop')}" alt="Home page on desktop" width="640"> | <img src="${image('mobile')}" alt="Home page on mobile" width="220"> |`,
+            ].join('\n');
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find(
+              (c) => c.user?.type === 'Bot' && c.body?.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

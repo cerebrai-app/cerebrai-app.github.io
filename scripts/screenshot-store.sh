@@ -10,7 +10,7 @@
 set -euo pipefail
 
 ATTEMPTS=5
-# Seconds of back-off per attempt; tests set it to 0.
+# Seconds of back-off per attempt; screenshot-store.test.sh sets it to 0.
 RETRY_DELAY="${SCREENSHOT_STORE_RETRY_DELAY:-2}"
 repo="${SCREENSHOTS_REPO:?SCREENSHOTS_REPO is required}"
 
@@ -31,6 +31,13 @@ read_sha() {
   else
     echo "Could not read $1: $out" >&2
     return 1
+  fi
+}
+
+# Waits before the next attempt. There is no next attempt after the last one, so no wait.
+backoff() {
+  if (($1 < ATTEMPTS)); then
+    sleep $(($1 * RETRY_DELAY))
   fi
 }
 
@@ -55,7 +62,7 @@ put() {
       fi
       echo "Commit of $path failed (attempt $attempt), retrying..." >&2
     fi
-    sleep $((attempt * RETRY_DELAY))
+    backoff "$attempt"
   done
   return 1
 }
@@ -73,7 +80,7 @@ delete() {
       fi
       echo "Delete of $path failed (attempt $attempt), retrying..." >&2
     fi
-    sleep $((attempt * RETRY_DELAY))
+    backoff "$attempt"
   done
   return 1
 }

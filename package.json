@@ -16,9 +16,10 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "verify": "pnpm run check && pnpm run lint && pnpm run format:check",
-    "astro": "astro",
-    "screenshot": "node scripts/screenshot.mjs screenshots"
+    "test": "bash scripts/screenshot-store.test.sh",
+    "verify": "pnpm run check && pnpm run lint && pnpm run format:check && pnpm run test",
+    "screenshot": "node scripts/screenshot.mjs screenshots",
+    "astro": "astro"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.12",

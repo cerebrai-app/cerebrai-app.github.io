@@ -52,7 +52,10 @@ jobs:
           permission-contents: write
 
       - name: Check out the helper script
-        # Pinned, and without credentials: this job holds the app key.
+        # The action is pinned and no credentials are left behind. The script itself comes from
+        # the pull request's own commit, which adds no risk today: a branch in this repository
+        # can already change this workflow file. Revisit this (use the base commit instead)
+        # if outside contributors ever get to push branches here.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}

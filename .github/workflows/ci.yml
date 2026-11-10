@@ -29,3 +29,5 @@ jobs:
         run: pnpm run lint
       - name: Prettier
         run: pnpm run format:check
+      - name: Script tests
+        run: pnpm run test

@@ -19,7 +19,8 @@ Requires Node.js 22.23.4 or newer and [pnpm](https://pnpm.io) (the version is pi
 | `pnpm check`      | Type-check Astro, Vue, and TypeScript files          |
 | `pnpm lint`       | Lint with ESLint (`pnpm lint:fix` to auto-fix)       |
 | `pnpm format`     | Format with Prettier (`pnpm format:check` to verify) |
-| `pnpm verify`     | Run type-check, ESLint, and the Prettier check       |
+| `pnpm test`       | Test the screenshot upload script                    |
+| `pnpm verify`     | Run type-check, ESLint, Prettier, and the tests      |
 | `pnpm screenshot` | Capture the built home page into `./screenshots/`    |
 
 ## Project structure
@@ -39,7 +40,8 @@ scripts/          # Tooling (home page screenshots)
 - **Deploy** (`deploy.yml`) builds and publishes the site to GitHub Pages on every push to `main`,
   following the [Astro GitHub Pages guide](https://docs.astro.build/en/guides/deploy/github/). In
   the repository's **Settings → Pages**, the **Source** must be set to **GitHub Actions**.
-- **CI** (`ci.yml`) runs the type-check, ESLint, and Prettier on pull requests and on `main`.
+- **CI** (`ci.yml`) runs the type-check, ESLint, Prettier, and the script tests on pull requests and
+  on `main`.
 - **PR screenshot** (`pr-screenshot.yml`) posts a desktop and a mobile screenshot of the home page
   as a comment on every pull request, replacing the previous one. The setup (a GitHub App and two
   secrets) is described at the top of the workflow file. The images are stored in a public

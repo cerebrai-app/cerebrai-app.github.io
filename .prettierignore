@@ -3,7 +3,4 @@ dist/
 node_modules/
 pnpm-lock.yaml
 LICENSE
-# Added to main by the Claude GitHub app's setup pull request, with a trailing blank
-# line that Prettier rejects. Ignored so this branch does not have to edit that file.
-.github/workflows/claude.yml
 screenshots/

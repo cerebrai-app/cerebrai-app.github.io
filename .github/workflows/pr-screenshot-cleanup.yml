@@ -54,7 +54,7 @@ jobs:
       # Self-hosted runners don't come with gh, which the steps below call.
       - name: Install gh
         if: ${{ env.APP_CLIENT_ID != '' }}
-        uses: cerebrai-app/actions/setup-gh@9f49845b5d545dd90f1d893ec0dac0461ceb18c7 # unreleased, from cerebrai-app/actions#10
+        uses: cerebrai-app/actions/setup-gh@9d3f590b4cd4b83ad4da88c7f14f61b1100c6430 # v3.3.0
 
       - name: Check out the helper script
         # The action is pinned and no credentials are left behind. The script itself comes from

@@ -1,7 +1,7 @@
 name: Renovate
 
 # Self-hosted Renovate. It opens PRs that bump the pinned GitHub Actions,
-# including cerebrai-app/actions (see renovate.json).
+# including cerebrai-app/actions, and the npm dependencies (see renovate.json).
 #
 # Runs weekly, and can be started by hand from the Actions tab ("Run workflow",
 # with an optional dry run that opens no PRs).

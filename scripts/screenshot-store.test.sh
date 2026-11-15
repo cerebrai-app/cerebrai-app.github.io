@@ -3,7 +3,7 @@
 #
 #   bash scripts/screenshot-store.test.sh
 #
-# Needs bash, jq and GNU base64, which the GitHub runners have.
+# Needs bash, jq and GNU base64 (ci.yml installs jq on the self-hosted runner).
 set -euo pipefail
 
 script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/screenshot-store.sh"

@@ -26,7 +26,7 @@ jobs:
   cleanup:
     # PRs from forks never publish screenshots (see pr-screenshot.yml), so there is nothing to delete.
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
     # Shares a group with the publish job, so a run still publishing waits for this one
     # (or the other way round) instead of recreating the files after they are deleted.
@@ -50,6 +50,11 @@ jobs:
           owner: ${{ github.repository_owner }}
           repositories: automated-screenshots
           permission-contents: write
+
+      # Self-hosted runners don't come with gh, which the steps below call.
+      - name: Install gh
+        if: ${{ env.APP_CLIENT_ID != '' }}
+        uses: cerebrai-app/actions/setup-gh@da96b5c774508e239ab5f47a44af71a77381484c # v3.3.1
 
       - name: Check out the helper script
         # The action is pinned and no credentials are left behind. The script itself comes from

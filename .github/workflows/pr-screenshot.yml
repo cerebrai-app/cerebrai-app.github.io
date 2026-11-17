@@ -32,22 +32,27 @@ env:
 
 jobs:
   screenshot:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
     # A newer push makes this run's screenshots out of date, so stop building them.
     concurrency:
       group: pr-screenshot-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The PR's code runs below; don't leave the token where it can read it.
           persist-credentials: false
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      # Node first: pnpm/action-setup falls back to the standalone pnpm binary,
+      # which needs libatomic, when there is no Node 22.13+ on the runner.
+      # It also caches the pnpm store, since setup-node's pnpm cache would
+      # need pnpm installed before it runs.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          cache: pnpm
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          cache: true
       - run: pnpm install --frozen-lockfile
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
@@ -56,7 +61,7 @@ jobs:
       - name: Capture home page
         run: pnpm run screenshot
       - name: Upload screenshots as an artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: home-page-screenshots
           path: screenshots/
@@ -67,7 +72,7 @@ jobs:
     needs: screenshot
     # PRs from forks cannot read the secrets, so they stop at the artifact above.
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
     # Never cancelled mid-way: the two images are separate commits, and stopping between
     # them would leave a desktop image and a mobile image from different pushes. A newer
@@ -106,6 +111,16 @@ jobs:
           repositories: ${{ github.event.repository.name }}
           permission-pull-requests: write
 
+      # Self-hosted runners don't come with gh, which the steps below call.
+      - name: Install gh
+        if: ${{ env.APP_CLIENT_ID != '' }}
+        uses: cerebrai-app/actions/setup-gh@da96b5c774508e239ab5f47a44af71a77381484c # v3.3.1
+
+      # screenshot-store.sh builds its API requests with jq.
+      - name: Install jq
+        if: ${{ env.APP_CLIENT_ID != '' }}
+        uses: cerebrai-app/actions/setup-jq@da96b5c774508e239ab5f47a44af71a77381484c # v3.3.1
+
       - name: Check out the helper script
         # The action is pinned and no credentials are left behind. The script itself comes from
         # the pull request's own commit, which adds no risk today: a branch in this repository
@@ -119,7 +134,7 @@ jobs:
 
       - name: Download screenshots
         if: ${{ steps.app-token.outputs.token != '' }}
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: home-page-screenshots
           path: screenshots

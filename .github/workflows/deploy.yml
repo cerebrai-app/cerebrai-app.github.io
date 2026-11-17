@@ -24,6 +24,12 @@ jobs:
     steps:
       - name: Checkout your repository using git
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # withastro/action runs pnpm/action-setup before it sets up Node. Without
+      # Node 22.13+ already on the runner, that falls back to the standalone
+      # pnpm binary, which needs libatomic.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
       - name: Install, build, and upload your site
         uses: withastro/action@a8b97df764791eb61fbf3338ef713b0e61ae05c5 # v6.1.4
 

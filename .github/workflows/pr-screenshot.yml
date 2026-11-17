@@ -43,11 +43,16 @@ jobs:
         with:
           # The PR's code runs below; don't leave the token where it can read it.
           persist-credentials: false
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      # Node first: pnpm/action-setup falls back to the standalone pnpm binary,
+      # which needs libatomic, when there is no Node 22.13+ on the runner.
+      # It also caches the pnpm store, since setup-node's pnpm cache would
+      # need pnpm installed before it runs.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          cache: pnpm
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          cache: true
       - run: pnpm install --frozen-lockfile
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium

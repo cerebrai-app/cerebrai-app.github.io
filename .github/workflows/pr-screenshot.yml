@@ -32,7 +32,7 @@ env:
 
 jobs:
   screenshot:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     # A newer push makes this run's screenshots out of date, so stop building them.
     concurrency:
@@ -72,7 +72,7 @@ jobs:
     needs: screenshot
     # PRs from forks cannot read the secrets, so they stop at the artifact above.
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     # Never cancelled mid-way: the two images are separate commits, and stopping between
     # them would leave a desktop image and a mobile image from different pushes. A newer

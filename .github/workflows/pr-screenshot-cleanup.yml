@@ -26,7 +26,7 @@ jobs:
   cleanup:
     # PRs from forks never publish screenshots (see pr-screenshot.yml), so there is nothing to delete.
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     # Shares a group with the publish job, so a run still publishing waits for this one
     # (or the other way round) instead of recreating the files after they are deleted.

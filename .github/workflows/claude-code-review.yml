@@ -22,7 +22,7 @@ jobs:
     # Skip PRs opened by bots such as Renovate: claude-code-action refuses bot
     # actors, and their PR text (e.g. upstream release notes) should not reach Claude.
     if: ${{ github.event.pull_request.user.type != 'Bot' }}
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
@@ -37,7 +37,7 @@ jobs:
     # Skip PRs opened by bots such as Renovate: claude-code-action refuses bot
     # actors, and their PR text (e.g. upstream release notes) should not reach Claude.
     if: ${{ github.event.pull_request.user.type != 'Bot' }}
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
@@ -55,7 +55,7 @@ jobs:
   minimize-old-ponytail-reviews:
     needs: ponytail-review
     if: ${{ needs.ponytail-review.result == 'success' }}
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       issues: write
       pull-requests: write

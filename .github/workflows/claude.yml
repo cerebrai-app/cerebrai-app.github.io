@@ -28,6 +28,6 @@ jobs:
       id-token: write
       actions: read # Required for Claude to read CI results on PRs
     steps:
-      - uses: cerebrai-app/actions/claude@1f3c4aea891f239f2e2f6276908648ee08416739 # v3.6.1
+      - uses: cerebrai-app/actions/claude@3237aca92e00a561e1e5acab0fb34fbf6cace984 # v4.1.0
         with:
           claude-code-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

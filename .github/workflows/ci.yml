@@ -37,6 +37,6 @@ jobs:
       - name: Prettier
         run: pnpm run format:check
       # Self-hosted runners don't come with jq, which the script tests use.
-      - uses: cerebrai-app/actions/setup-jq@1f3c4aea891f239f2e2f6276908648ee08416739 # v3.6.1
+      - uses: cerebrai-app/actions/setup-jq@3237aca92e00a561e1e5acab0fb34fbf6cace984 # v4.1.0
       - name: Script tests
         run: pnpm run test

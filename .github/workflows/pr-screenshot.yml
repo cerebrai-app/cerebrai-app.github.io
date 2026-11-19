@@ -114,12 +114,12 @@ jobs:
       # Self-hosted runners don't come with gh, which the steps below call.
       - name: Install gh
         if: ${{ env.APP_CLIENT_ID != '' }}
-        uses: cerebrai-app/actions/setup-gh@3237aca92e00a561e1e5acab0fb34fbf6cace984 # v4.1.0
+        uses: cerebrai-app/actions/setup-gh@2f5a00210f147fcedc07e1c95243d4dcc4d911a3 # v4.2.0
 
       # screenshot-store.sh builds its API requests with jq.
       - name: Install jq
         if: ${{ env.APP_CLIENT_ID != '' }}
-        uses: cerebrai-app/actions/setup-jq@3237aca92e00a561e1e5acab0fb34fbf6cace984 # v4.1.0
+        uses: cerebrai-app/actions/setup-jq@2f5a00210f147fcedc07e1c95243d4dcc4d911a3 # v4.2.0
 
       - name: Check out the helper script
         # The action is pinned and no credentials are left behind. The script itself comes from
